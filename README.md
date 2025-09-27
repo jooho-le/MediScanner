@@ -1,0 +1,103 @@
+# MediSCanner
+
+End-to-end scaffold for training and serving a skin-lesion image classifier using PyTorch. The project focuses on transfer learning with modern vision backbones (ConvNeXt, EfficientNet-V2, Swin) and provides scripts for training, inference, and Grad-CAM visualisation.
+
+## 1. Environment Setup
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .\.venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+> GPU users: install the CUDA-specific `torch`/`torchvision` wheels from [PyTorch.org](https://pytorch.org/get-started/locally/) if needed.
+
+## 2. Prepare the Dataset
+
+Two options are supported:
+
+- **Folder structure** (recommended for quick start):
+  ```
+  data/
+    train/
+      benign/
+        xxx.jpg
+      melanoma/
+        yyy.jpg
+      ...
+  ```
+- **CSV metadata**: Provide a CSV with `image_path` (relative to `data_dir`) and `label` columns, then pass `--csv path/to/meta.csv` when training.
+
+## 3. Train a Model
+
+```bash
+python train.py data/train \
+  --model convnext_base \
+  --epochs 20 \
+  --batch-size 16 \
+  --lr 5e-5 \
+  --use-class-weights \
+  --project-dir outputs
+```
+
+Key flags:
+- `--model`: `convnext_base`, `efficientnet_v2_m`, `swin_v2_b`
+- `--val-split`: validation ratio (default `0.2`)
+- `--no-amp`: disable automatic mixed precision if training on CPU
+- `--class-names`: customise where the class name JSON is stored
+
+Artifacts saved to `outputs/` by default:
+- `checkpoints/best.pt` — best validation AUC checkpoint (full trainer state)
+- `checkpoints/last_model.pt` — final state dict
+- `class_names.json` — ordered class labels
+- `training_history.json` — metrics per epoch
+
+## 4. Run Inference
+
+```bash
+python predict.py path/to/image.jpg \
+  --weights outputs/checkpoints/best.pt \
+  --class-names outputs/class_names.json \
+  --model convnext_base \
+  --image-size 384
+```
+
+The script prints per-class probabilities and the predicted label.
+
+## 5. Generate Grad-CAM Visualisations
+
+```bash
+python grad_cam.py path/to/image.jpg \
+  --weights outputs/checkpoints/best.pt \
+  --class-names outputs/class_names.json \
+  --model convnext_base \
+  --target-layer features.3.2 \
+  --output outputs/gradcam.jpg
+```
+
+Grad-CAM overlays are stored at the `--output` path. Use `--target-class <idx>` to highlight a specific class index.
+
+## 6. Project Structure
+
+```
+.
+├── src/mediscanner/
+│   ├── data.py         # Dataset/dataloader utilities
+│   ├── engine.py       # Training loop & checkpoint helpers
+│   ├── metrics.py      # Centralised evaluation metrics
+│   ├── model.py        # Backbone factory (ConvNeXt/EfficientNet/Swin)
+│   ├── utils.py        # Config helpers, seeding, device utilities
+│   └── __init__.py
+├── train.py            # CLI training entrypoint
+├── predict.py          # Single-image inference
+├── grad_cam.py         # Grad-CAM heatmap generator
+├── requirements.txt
+└── README.md
+```
+
+## 7. Next Steps
+
+- Add experiment tracking (TensorBoard, Weights & Biases) for richer insights.
+- Extend data augmentations or incorporate advanced losses (e.g., focal loss) for imbalanced classes.
+- Wrap inference into a FastAPI/React web app when the model stabilises.
