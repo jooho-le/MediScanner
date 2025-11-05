@@ -37,8 +37,9 @@ class Trainer:
         self.optimizer = optimizer
         self.device = device
         self.scheduler = scheduler
-        self.mixed_precision = mixed_precision
-        self.scaler = torch.cuda.amp.GradScaler(enabled=mixed_precision)
+        # Enable AMP only on CUDA
+        self.mixed_precision = bool(mixed_precision and device.type == "cuda")
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.mixed_precision)
 
     def train_one_epoch(self, loader: DataLoader) -> Dict[str, float]:
         self.model.train()
@@ -52,6 +53,7 @@ class Trainer:
 
             self.optimizer.zero_grad(set_to_none=True)
 
+            # autocast is only meaningful on CUDA here
             with torch.cuda.amp.autocast(enabled=self.mixed_precision):
                 outputs = self.model(images)
                 loss = self.criterion(outputs, labels)

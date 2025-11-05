@@ -8,3 +8,15 @@ __pycache__/
 outputs/
 checkpoints/
 .DS_Store
+data/
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.log
+.ipynb_checkpoints/
+.vscode/
+.idea/
+# Kaggle/API secrets
+kaggle.json
+kaggle/

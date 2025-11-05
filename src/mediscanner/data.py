@@ -149,19 +149,20 @@ def create_dataloaders(config: DatasetConfig) -> Tuple[
         transform=val_tfms,
     )
 
+    pin = torch.cuda.is_available()
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.batch_size,
         shuffle=True,
         num_workers=config.num_workers,
-        pin_memory=True,
+        pin_memory=pin,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=config.batch_size,
         shuffle=False,
         num_workers=config.num_workers,
-        pin_memory=True,
+        pin_memory=pin,
     )
 
     train_labels = [labels[i] for i in train_idx]

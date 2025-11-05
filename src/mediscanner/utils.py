@@ -38,7 +38,16 @@ def seed_everything(seed: int = 42) -> None:
 
 
 def select_device() -> torch.device:
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Prefer CUDA, otherwise Apple Silicon MPS, else CPU
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    # Some PyTorch builds expose MPS backend on Apple Silicon
+    try:
+        if torch.backends.mps.is_available():  # type: ignore[attr-defined]
+            return torch.device("mps")
+    except Exception:
+        pass
+    return torch.device("cpu")
 
 
 def ensure_dir(path: Path) -> None:
