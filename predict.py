@@ -56,6 +56,18 @@ def parse_args() -> argparse.Namespace:
         help="Optional temperature value for softmax calibration (e.g., 1.5).",
     )
     parser.add_argument(
+        "--reject-threshold",
+        type=float,
+        default=None,
+        help="If top probability is below this, output 'uncertain/OOD' instead of a class.",
+    )
+    parser.add_argument(
+        "--entropy-threshold",
+        type=float,
+        default=None,
+        help="If predictive entropy (natural log) exceeds this, mark as uncertain.",
+    )
+    parser.add_argument(
         "--device",
         type=str,
         default=None,
@@ -118,44 +130,67 @@ def main() -> None:
         logits = out
         if args.apply_temperature:
             scaler = TemperatureScaler(init_temperature=args.apply_temperature)
-            probs = scaler.softmax(logits).cpu().numpy()[0]
+            with torch.no_grad():
+                probs = scaler.softmax(logits).detach().cpu().numpy()[0]
         else:
-            probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
+            probs = torch.softmax(logits, dim=1).detach().cpu().numpy()[0]
         top_idx = probs.argmax()
+        top_prob = float(probs[top_idx])
+        uncertain = False
+        if args.reject_threshold is not None and top_prob < args.reject_threshold:
+            uncertain = True
+        if args.entropy_threshold is not None:
+            import numpy as np
+            ent = float(-(probs * (np.log(probs + 1e-12))).sum())
+            if ent > args.entropy_threshold:
+                uncertain = True
         for cls, prob in zip(class_names, probs):
             print(f"{cls}: {prob:.3f}")
-        print(f"Predicted class: {class_names[top_idx]}")
+        if uncertain:
+            print("Result: uncertain/OOD — possible no lesion or distribution shift")
+        else:
+            print(f"Predicted class: {class_names[top_idx]}")
         return
 
     # Multitask formatting
     disease_logits = out["disease"]
     if args.apply_temperature:
         scaler = TemperatureScaler(init_temperature=args.apply_temperature)
-        disease_probs = scaler.softmax(disease_logits).cpu().numpy()[0]
+        with torch.no_grad():
+            disease_probs = scaler.softmax(disease_logits).detach().cpu().numpy()[0]
     else:
-        disease_probs = torch.softmax(disease_logits, dim=1).cpu().numpy()[0]
+        disease_probs = torch.softmax(disease_logits, dim=1).detach().cpu().numpy()[0]
     disease_idx = int(disease_probs.argmax())
+    top_prob = float(disease_probs[disease_idx])
+    uncertain = False
+    if args.reject_threshold is not None and top_prob < args.reject_threshold:
+        uncertain = True
+    if args.entropy_threshold is not None:
+        import numpy as np
+        ent = float(-(disease_probs * (np.log(disease_probs + 1e-12))).sum())
+        if ent > args.entropy_threshold:
+            uncertain = True
 
     severity_probs = None
     if "severity" in out:
         sev_logits = out["severity"]
         if args.apply_temperature:
             scaler_s = TemperatureScaler(init_temperature=args.apply_temperature)
-            severity_probs = scaler_s.softmax(sev_logits).cpu().numpy()[0]
+            with torch.no_grad():
+                severity_probs = scaler_s.softmax(sev_logits).detach().cpu().numpy()[0]
         else:
-            severity_probs = torch.softmax(sev_logits, dim=1).cpu().numpy()[0]
+            severity_probs = torch.softmax(sev_logits, dim=1).detach().cpu().numpy()[0]
 
     infectious_prob = None
     if "infectious" in out:
-        infectious_prob = torch.sigmoid(out["infectious"]).cpu().numpy()[0].item()
+        infectious_prob = torch.sigmoid(out["infectious"]).detach().cpu().numpy()[0].item()
 
     urgent_prob = None
     if "urgent" in out:
-        urgent_prob = torch.sigmoid(out["urgent"]).cpu().numpy()[0].item()
+        urgent_prob = torch.sigmoid(out["urgent"]).detach().cpu().numpy()[0].item()
 
     # Simple risk/triage heuristics
     top_class = class_names[disease_idx]
-    top_prob = float(disease_probs[disease_idx])
     sev_idx = int(severity_probs.argmax()) if severity_probs is not None else None
     sev_names = ["low", "moderate", "high"][: args.severity_classes]
     sev_name = (sev_names[sev_idx] if sev_idx is not None else None)
@@ -175,7 +210,9 @@ def main() -> None:
             risk = "medium"
         reasons.append(f"high confidence in {top_class}")
 
-    if risk == "high":
+    if uncertain:
+        referral = "Uncertain: re-capture image or seek clinical evaluation"
+    elif risk == "high":
         referral = "Immediate dermatology visit recommended"
     elif risk == "medium":
         referral = "Dermatology visit within 1 week recommended"
@@ -186,7 +223,10 @@ def main() -> None:
     print("Disease probabilities:")
     for cls, prob in zip(class_names, disease_probs):
         print(f"- {cls}: {prob:.3f}")
-    print(f"Predicted disease: {top_class} (p={top_prob:.2f})")
+    if uncertain:
+        print("Predicted disease: uncertain/OOD")
+    else:
+        print(f"Predicted disease: {top_class} (p={top_prob:.2f})")
     if severity_probs is not None:
         for i, p in enumerate(severity_probs):
             name = sev_names[i] if i < len(sev_names) else f"sev_{i}"

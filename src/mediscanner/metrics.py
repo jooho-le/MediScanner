@@ -30,7 +30,18 @@ def compute_metrics(
     accuracy = float(accuracy_score(labels, predictions))
     auc = None
     if probabilities is not None and probabilities.shape[1] > 1:
-        auc = float(roc_auc_score(labels, probabilities, multi_class="ovr"))
+        # sklearn's roc_auc_score for multiclass expects the number of columns in
+        # probabilities to match the number of classes present in y_true. When the
+        # validation split misses some classes, this raises a ValueError. Handle
+        # gracefully by skipping AUC in that case.
+        try:
+            unique = np.unique(labels)
+            if len(unique) == probabilities.shape[1]:
+                auc = float(roc_auc_score(labels, probabilities, multi_class="ovr"))
+            else:
+                auc = None
+        except Exception:
+            auc = None
     report = classification_report(labels, predictions, output_dict=True, zero_division=0)
     confusion = confusion_matrix(labels, predictions)
     return EvaluationResult(

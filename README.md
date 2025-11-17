@@ -29,6 +29,10 @@ Two options are supported:
   ```
 - **CSV metadata**: Provide a CSV with `image_path` (relative to `data_dir`) and `label` columns, then pass `--csv path/to/meta.csv` when training.
 
+> Want more data?  
+> - Download ISIC2019 from Kaggle: `kaggle datasets download -d andrewmvd/isic-2019 -p data/isic2019_raw --unzip` then run `python scripts/prepare_isic2019.py --raw data/isic2019_raw --out data/train_isic2019`.  
+> - Export any Hugging Face dataset split to folder form: `python scripts/prepare_hf_dataset.py nateraw/skin_cancer_mnist --split train --out data/hf_ham`. Merge into your training root with `rsync -a data/hf_ham/ data/train_merged/`.
+
 ## 3. Train a Model
 
 ```bash
